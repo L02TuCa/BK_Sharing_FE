@@ -1,1 +1,15 @@
 # FrontEnd_mobileApp
+
+🛠️ Yêu Cầu Tiên QuyếtĐể khởi chạy dự án này, bạn cần cài đặt các công cụ sau trên máy tính:Node.js: Phiên bản 18 trở lên (khuyến nghị).npm (hoặc Yarn/pnpm).Expo CLI: Công cụ dòng lệnh của Expo.npm install -g expo-cli
+# HOẶC
+npm install -g expo
+Thiết bị/Mô phỏng:Máy vật lý: Cài đặt ứng dụng Expo Go trên điện thoại iOS/Android của bạn.Mô phỏng: Cài đặt Android Studio (cho Android Emulator) hoặc Xcode (cho iOS Simulator).🚀 Hướng Dẫn Khởi ChạyThực hiện các bước sau để thiết lập và chạy ứng dụng:Bước 1: Clone RepositoryClone mã nguồn về máy tính của bạn và di chuyển vào thư mục dự án.git clone <URL_CỦA_REPOSITORY>
+cd MyApp
+Bước 2: Cài Đặt DependenciesSử dụng npm install để cài đặt tất cả các thư viện cần thiết (react-native, expo-router, @expo/vector-icons, v.v.).npm install
+Bước ⚠️: Khắc Phục Lỗi Caching (Quan trọng)Do dự án sử dụng Expo Router và có các file layout phức tạp, bạn nên xóa cache của Metro Bundler để đảm bảo việc phân giải route diễn ra chính xác:npm start -- --reset-cache
+# HOẶC
+expo start --clear
+Bước 3: Khởi Chạy Ứng DụngSử dụng lệnh expo start để khởi động máy chủ phát triển (Metro Bundler).npm start
+# HOẶC
+expo start
+Sau khi chạy lệnh, một menu sẽ xuất hiện trong Terminal (hoặc trình duyệt web).Bước 4: Xem Ứng DụngBạn có 3 tùy chọn để xem ứng dụng:Chạy trên điện thoại (Expo Go - Khuyến nghị):Mở ứng dụng Expo Go trên điện thoại.Sử dụng camera điện thoại để quét mã QR Code hiển thị trong Terminal hoặc trình duyệt. Ứng dụng sẽ tự động được tải và khởi chạy trên điện thoại của bạn.Chạy trên iOS Simulator (Xcode):Nhấn phím i trong Terminal (nếu bạn đang dùng macOS và đã cài Xcode).Chạy trên Android Emulator (Android Studio):Nhấn phím a trong Terminal (nếu bạn đã cài Android Studio và thiết lập môi trường Android).📂 Cấu Trúc Dự Án ChínhDự án này sử dụng Expo Router để điều hướng, tuân thủ theo quy ước Folder-Based Routing.Thư mục/FileMục đíchapp/Chứa tất cả các Route và Layout của ứng dụng.app/_layout.tsxRoot Layout - Định nghĩa khung sườn và logic chuyển hướng (Auth check).app/(auth)/Auth Group - Chứa các màn hình liên quan đến Đăng nhập, Đăng ký, và Onboarding.app/(tabs)/Tabs Group - Chứa các màn hình chính (Home, Archive, Settings, Notifications) với thanh điều hướng dưới cùng.app/components/Chứa các Component UI có thể tái sử dụng (ví dụ: BottomNavBar, AddMenuModal, RecentItem).app/context/Chứa các Context API (ví dụ: AuthContext, ThemeContext) để quản lý trạng thái toàn cục.details/[id].tsxRoute động cho màn hình Chi tiết tài liệu.
