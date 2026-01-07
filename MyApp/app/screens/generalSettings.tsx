@@ -71,7 +71,7 @@ const SettingOption: FC<SettingOptionProps> = ({
   return (
     <TouchableOpacity 
       style={styles.optionContainer} 
-      onPress={rightContent === 'switch' ? onSwitchToggle : onPress}
+      onPress={rightContent === 'switch' ? () => onSwitchToggle && onSwitchToggle(!switchValue) : onPress}
       activeOpacity={0.7}
     >
       <View style={styles.optionContent}>
@@ -147,6 +147,14 @@ export default function GeneralSettingsScreen() {
         Alert.alert('Quản lý bộ nhớ', 'Chuyển đến màn hình Chi tiết Bộ nhớ.');
     };
 
+    const handleOpenDocuments = () => {
+        // Chuyển hướng đến file documentViewer.tsx
+        // Kèm theo tham số 'title' để hiển thị trên header
+        router.push({
+            pathname: "/screens/documentViewer", 
+            params: { title: "Tài liệu môn học" }
+        });
+    };
 
     const colors = getThemeColors(isDarkMode);
 
@@ -222,6 +230,18 @@ export default function GeneralSettingsScreen() {
                     iconColor="#ff0000ff"
                     rightContent="chevron"
                     onPress={handleReportPress}
+                />
+
+
+
+                {/* --- MỤC MỚI: TÀI LIỆU --- */}
+                <Text style={styles.sectionTitle}>Học tập</Text>
+                <SettingOption 
+                    iconName="folder-open-outline" 
+                    label="Tài liệu tham khảo" 
+                    iconColor="#007AFF" // Màu xanh dương
+                    rightContent="chevron"
+                    onPress={handleOpenDocuments} 
                 />
 
             

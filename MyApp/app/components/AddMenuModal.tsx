@@ -10,23 +10,23 @@ import {
   TouchableWithoutFeedback 
 } from 'react-native';
 import { Ionicons, Feather } from '@expo/vector-icons'; 
+import { useRouter } from 'expo-router'; // <--- 1. Import Router
 
 // Định nghĩa kiểu dữ liệu cho một tùy chọn
 interface AddOption {
   iconName: keyof typeof Ionicons.glyphMap | keyof typeof Feather.glyphMap;
   label: string;
-  isFeather: boolean; // Để xác định icon thuộc thư viện nào
-  action: 'file' | 'folder' | 'capture'; // Loại hành động
+  isFeather: boolean;
+  action: 'file' | 'folder' | 'capture'; 
 }
 
-// Dữ liệu giả định cho các tùy chọn
+// Dữ liệu giả định
 const OPTIONS: AddOption[] = [
   { iconName: 'document-outline', label: 'Thêm file mới', isFeather: false, action: 'file' },
   { iconName: 'folder-outline', label: 'Thêm thư mục mới', isFeather: false, action: 'folder' },
   { iconName: 'camera-outline', label: 'Chụp/Quét tài liệu', isFeather: false, action: 'capture' },
 ];
 
-// Định nghĩa Props cho Modal
 interface AddMenuModalProps {
   isVisible: boolean;
   onClose: () => void;
@@ -34,45 +34,56 @@ interface AddMenuModalProps {
 }
 
 const AddMenuModal: FC<AddMenuModalProps> = ({ isVisible, onClose, onSelectAction }) => {
-  
-  // Hàm render từng nút tùy chọn
+  const router = useRouter(); // <--- 2. Khởi tạo router
+
+  // --- 3. Hàm xử lý logic khi chọn ---
+  const handleOptionPress = (action: 'file' | 'folder' | 'capture') => {
+    // Luôn đóng modal trước khi thực hiện hành động
+    onClose();
+
+    if (action === 'file') {
+      // Chuyển hướng đến màn hình Upload
+      // Đảm bảo đường dẫn này khớp với tên file bạn đã tạo ở bước trước
+      router.push('./screens/UploadDocumentScreen'); 
+    } else {
+      // Các hành động khác (Folder/Capture) trả về cho Parent xử lý (nếu cần)
+      onSelectAction(action);
+    }
+  };
 
   const renderOption = (option: AddOption) => {
-    // Chọn thư viện Icon dựa trên prop 'isFeather'
     const IconComponent = option.isFeather ? Feather : Ionicons;
 
     return (
       <TouchableOpacity 
         key={option.label}
         style={styles.optionButton}
-        onPress={() => onSelectAction(option.action)}
+        // Gọi hàm xử lý mới thay vì gọi trực tiếp onSelectAction
+        onPress={() => handleOptionPress(option.action)} 
         activeOpacity={0.7}
       >
         <View style={styles.iconWrapper}>
           <IconComponent name={option.iconName as any} size={24} color="#000080" />
         </View>
         <Text style={styles.optionLabel}>{option.label}</Text>
-      </TouchableOpacity> // ✅ Đảm bảo chỉ có </TouchableOpacity> ở đây, không có </View>
+      </TouchableOpacity>
     );
   };
+
   return (
     <Modal
-      animationType="fade" // Hiệu ứng mờ nền
+      animationType="fade"
       transparent={true}
       visible={isVisible}
       onRequestClose={onClose}
     >
-      {/* Nền mờ, nhấn vào đóng modal */}
       <TouchableWithoutFeedback onPress={onClose}>
         <View style={styles.overlay}>
-          {/* Menu chính, ngăn không cho sự kiện nhấn lan ra nền */}
           <TouchableWithoutFeedback>
             <View style={styles.menuContainer}>
               
-              {/* Tiêu đề */}
               <Text style={styles.menuTitle}>Tạo mới</Text>
 
-              {/* Danh sách các tùy chọn */}
               <View style={styles.optionsList}>
                 {OPTIONS.map(renderOption)}
               </View>
@@ -85,13 +96,12 @@ const AddMenuModal: FC<AddMenuModalProps> = ({ isVisible, onClose, onSelectActio
   );
 };
 
-// --- STYLING ---
-
+// --- STYLING (Giữ nguyên như cũ) ---
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    justifyContent: 'flex-end', // Đẩy nội dung xuống dưới cùng
-    backgroundColor: 'rgba(0, 0, 0, 0.4)', // Hiệu ứng nền mờ
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
   },
   menuContainer: {
     backgroundColor: '#fff',
@@ -99,8 +109,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 20,
     paddingHorizontal: 20,
     paddingTop: 20,
-    paddingBottom: 40, // Khoảng trống dưới cùng
-    // Shadow cho menu (tùy chọn)
+    paddingBottom: 40,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -2 },
     shadowOpacity: 0.1,
@@ -114,16 +123,14 @@ const styles = StyleSheet.create({
     marginBottom: 15,
     textAlign: 'center',
   },
-  optionsList: {
-    // Không cần style đặc biệt, các nút tự xếp chồng
-  },
+  optionsList: {},
   optionButton: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 15,
     borderRadius: 10,
     marginBottom: 10,
-    backgroundColor: '#f8f8ff', // Màu nền nhẹ cho nút
+    backgroundColor: '#f8f8ff',
     paddingHorizontal: 15,
   },
   iconWrapper: {

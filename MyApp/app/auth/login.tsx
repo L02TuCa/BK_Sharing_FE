@@ -1,4 +1,4 @@
-import React, {FC, useState} from 'react';
+import React, { useState } from 'react';
 import {
   StyleSheet,
   View,
@@ -6,157 +6,185 @@ import {
   TextInput,
   TouchableOpacity,
   SafeAreaView,
-  ActivityIndicator, //  ActivityIndicator để hiển thị trạng thái loading
+  ActivityIndicator,
   Alert,
+  KeyboardAvoidingView, // Giúp bàn phím không che input
+  Platform
 } from 'react-native';
-import { Feather,Ionicons } from '@expo/vector-icons'; // Sử dụng Feather icon, bạn có thể thay thế bằng icon khác nếu không dùng Expo
+import { Feather, Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useAuth } from '../context/AuthContext';
+import AsyncStorage from '@react-native-async-storage/async-storage'; // Import thư viện lưu trữ
+
+// Import hàm gọi API
+import { loginUser } from '../services/authService'; 
+// import { useAuth } from '../context/AuthContext'; // Tạm thời ẩn nếu chưa config Context xong
 
 const LoginScreen = () => {
   const router = useRouter(); 
-  const { login } = useAuth();
+  // const { login } = useAuth(); // Tạm ẩn để dùng trực tiếp API cho dễ test
 
-
-  const [account, setAccount] = useState('');
+  const [account, setAccount] = useState(''); // Đây là email hoặc username
   const [password, setPassword] = useState('');
-  const [isLoading, setIsLoading] = useState(false); // Trạng thái loading
-  const [isPasswordVisible, setIsPasswordVisible] = useState(false); // Ẩn/hiện mật khẩu
-
+  const [isLoading, setIsLoading] = useState(false);
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
 
   // --- HÀM XỬ LÝ ĐĂNG NHẬP ---
   const handleLogin = async () => {
-    if (!account || !password) {
+    // 1. Validate đầu vào
+    if (!account.trim() || !password.trim()) {
       Alert.alert('Lỗi đăng nhập', 'Vui lòng nhập đầy đủ Tên tài khoản và Mật khẩu.');
       return;
     }
 
     setIsLoading(true);
-    try {
-      // Trong thực tế, hàm login này sẽ gửi request lên API của bạn
-      // và nhận token hoặc thông tin người dùng
-      // Giả định: hàm login trả về true nếu thành công, false nếu thất bại (Sai TK/MK)
-      
-      const success = await login(account, password); 
 
-      if (success) {
-        // Đăng nhập thành công, AuthContext tự điều hướng hoặc
-        // chúng ta điều hướng thủ công đến màn hình chính (Ví dụ: Tab Home)
-        router.replace('/home'); 
-      } else {
-        // Xử lý khi đăng nhập thất bại (Sai TK/MK)
-        Alert.alert('Đăng nhập thất bại', 'Tài khoản hoặc mật khẩu không chính xác.');
-      }
-    } catch (error) {
+    try {
+      // 2. Gọi API Login thật
+      console.log("Đang đăng nhập với:", account);
+      const userData = await loginUser(account, password);
+
+      // 3. Đăng nhập thành công -> Lưu dữ liệu vào máy
+      // userData chứa: { userId, fullName, role, ... }
+      await AsyncStorage.setItem('userSession', JSON.stringify(userData));
+
+      Alert.alert(
+        "Thành công", 
+        `Chào mừng ${userData.fullName} quay trở lại!`,
+        [
+          {
+            text: "OK",
+            onPress: () => {
+              // 4. Chuyển hướng vào màn hình chính (Settings hoặc Home)
+              // Đổi đường dẫn này thành màn hình chính của bạn
+              router.replace('/home'); 
+            }
+          }
+        ]
+      );
+
+    } catch (error: any) {
       console.error('Lỗi đăng nhập:', error);
-      Alert.alert('Lỗi hệ thống', 'Đã xảy ra lỗi không xác định. Vui lòng thử lại sau.');
+      // Hiển thị thông báo lỗi từ Server trả về (ví dụ: Sai mật khẩu)
+      Alert.alert('Đăng nhập thất bại', error.message || 'Kiểm tra lại tài khoản hoặc kết nối mạng.');
     } finally {
       setIsLoading(false);
     }
   };
 
-
-
-  // Hàm xử lý khi người dùng nhấn nút "Bạn chưa có tài khoản?"
   const handleNoAccountPress = () => {
-
+    // Chuyển sang màn hình đăng ký
+    // Đảm bảo đường dẫn này đúng với file RegisterScreen của bạn
     router.push('/signup'); 
   };
 
-  const handleGuestLogin = async () => {
-      // Giả định bạn có hàm loginGuest trong AuthContext
-      // router.replace('/home');
-      Alert.alert('Chế độ Guest', 'Chức năng Guest chưa được triển khai.');
+  const handleGuestLogin = () => {
+      Alert.alert('Chế độ Guest', 'Chức năng đang phát triển.');
   };
-
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Đăng nhập</Text>
-        <Text style={styles.subtitle}>Chào mừng bạn trở lại !</Text>
-      </View>
-      <View style={styles.form}>
-        <TextInput
-          style={[styles.input, styles.inputAccount]}
-          placeholder="account"
-          placeholderTextColor="#a0a0a0"
-          value={account}
-          onChangeText={setAccount}
-          keyboardType="email-address"
-          autoCapitalize="none"
-        />
-        <View style={styles.passwordInputContainer}>
-          <TextInput
-            style={[styles.input, {width: '100%', borderWidth: 0, marginBottom: 0}]} 
-            placeholder="Mật khẩu"
-            placeholderTextColor="#a0a0a0"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry={!isPasswordVisible}
-          />
-          <TouchableOpacity 
-              style={styles.passwordToggle} 
-              onPress={() => setIsPasswordVisible(!isPasswordVisible)}
-          >
-              <Ionicons 
-                  name={isPasswordVisible ? "eye-off-outline" : "eye-outline"} 
-                  size={24} 
-                  color="#999" 
+      {/* KeyboardAvoidingView giúp đẩy giao diện lên khi bàn phím hiện ra */}
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
+        style={{flex: 1}}
+      >
+        <View style={styles.contentContainer}> 
+          
+          {/* Header */}
+          <View style={styles.header}>
+            <Text style={styles.title}>Đăng nhập</Text>
+            <Text style={styles.subtitle}>Chào mừng bạn trở lại !</Text>
+          </View>
+
+          {/* Form */}
+          <View style={styles.form}>
+            {/* Input Tài khoản */}
+            <TextInput
+              style={[styles.input, styles.inputAccount]}
+              placeholder="Email hoặc Username"
+              placeholderTextColor="#a0a0a0"
+              value={account}
+              onChangeText={setAccount}
+              autoCapitalize="none"
+            />
+
+            {/* Input Mật khẩu */}
+            <View style={styles.passwordInputContainer}>
+              <TextInput
+                style={styles.passwordInputInner} // Style riêng cho input bên trong
+                placeholder="Mật khẩu"
+                placeholderTextColor="#a0a0a0"
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry={!isPasswordVisible}
               />
-          </TouchableOpacity>
+              <TouchableOpacity 
+                  style={styles.passwordToggle} 
+                  onPress={() => setIsPasswordVisible(!isPasswordVisible)}
+              >
+                  <Ionicons 
+                      name={isPasswordVisible ? "eye-off-outline" : "eye-outline"} 
+                      size={24} 
+                      color="#999" 
+                  />
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity style={styles.forgotPassword}>
+              <Text style={styles.forgotPasswordText}>Quên mật khẩu?</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Nút Đăng nhập */}
+          <View style={{ alignItems: 'center' }}> 
+            <TouchableOpacity 
+              style={[styles.loginButton, isLoading && styles.loginButtonDisabled]}
+              onPress={handleLogin}
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.loginButtonText}>Đăng nhập</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+
+          {/* Footer */}
+          <View style={styles.footer}>
+            <TouchableOpacity onPress={handleNoAccountPress}>
+              <Text style={styles.noAccountText}>Bạn chưa có tài khoản ?</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.guestButton} onPress={handleGuestLogin}>
+              <Text style={styles.guestButtonText}>GUEST</Text>
+            </TouchableOpacity>
+
+            <View style={{marginBottom: 15}}>
+                 <Text style={styles.continueWithText}>Or continue with</Text>
+            </View>
+
+            <TouchableOpacity style={styles.socialIcon}>
+              <Feather name="user" size={30} color="#000" />
+            </TouchableOpacity>
+          </View>
+
         </View>
-        <TouchableOpacity style={styles.forgotPassword}>
-          <Text style={styles.forgotPasswordText}>Quên mật khẩu?</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Nút Đăng nhập */}
-     
-        <View style={{ alignItems: 'center' }}> 
-        <TouchableOpacity 
-          style={[styles.loginButton, isLoading && styles.loginButtonDisabled]} // ✅ ÁP DỤNG STYLE DISABLED
-          onPress={handleLogin}
-          disabled={isLoading}
-        >
-          {isLoading ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <Text style={styles.loginButtonText}>Đăng nhập</Text>
-          )}
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.footer}>
-        <TouchableOpacity onPress={handleNoAccountPress}>
-          <Text style={styles.noAccountText}>Bạn chưa có tài khoản ?</Text>
-        </TouchableOpacity>
-
-        {/* Nút Guest */}
-        <TouchableOpacity style={styles.guestButton}>
-          <Text style={styles.guestButtonText}>GUEST</Text>
-        </TouchableOpacity>
-
-        <Text style={styles.continueWithText}>Or continue with</Text>
-
-        {/* Icon Tùy chọn */}
-        <TouchableOpacity style={styles.socialIcon}>
-          <Feather name="user" size={30} color="#000" />
-        </TouchableOpacity>
-      </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };
 
-// ---
-// Styling
-// ---
+// --- Styling ---
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff', // Nền trắng
+    backgroundColor: '#fff',
+    paddingTop: 50,
+  },
+  contentContainer: {
     paddingHorizontal: 20,
-    paddingTop: 50, // Thêm padding trên để bố cục đẹp hơn
+    flex: 1,
   },
   header: {
     alignItems: 'center',
@@ -165,7 +193,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 30,
     fontWeight: 'bold',
-    color: '#000080', // Màu xanh đậm
+    color: '#000080',
     marginBottom: 5,
   },
   subtitle: {
@@ -181,20 +209,19 @@ const styles = StyleSheet.create({
     borderRadius: 15,
     paddingHorizontal: 15,
     marginBottom: 15,
-    backgroundColor: '#f5f7ff', // Nền input màu xanh nhạt/tím nhạt
+    backgroundColor: '#f5f7ff',
     fontSize: 16,
-    borderWidth: 1, // Thêm border nhẹ cho input Password
+    borderWidth: 1,
     borderColor: '#f5f7ff',
-    width: '90%',
+    width: '95%', // Thống nhất chiều rộng
   },
   inputAccount: {
-    backgroundColor: '#fff', // Nền input Account màu trắng
-    borderWidth: 1.5, // Đường viền xanh đậm
+    backgroundColor: '#fff',
+    borderWidth: 1.5,
     borderColor: '#000080',
     marginBottom: 15,
   },
-
-
+  // Style cho Container chứa Input Password + Icon Mắt
   passwordInputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -203,14 +230,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
     marginBottom: 15,
     backgroundColor: '#f5f7ff', 
-    borderWidth: 1, // Thêm border nhẹ
+    borderWidth: 1,
     borderColor: '#f5f7ff',
-    width: '90%',
+    width: '95%', // Thống nhất chiều rộng
+  },
+  // Style cho TextInput nằm bên trong
+  passwordInputInner: {
+    flex: 1, // Chiếm hết khoảng trống còn lại trừ icon
+    height: '100%',
+    fontSize: 16,
+    color: '#000',
   },
   passwordToggle: {
     padding: 5,
   },
-
   forgotPassword: {
     alignSelf: 'flex-end',
     width: '90%',
@@ -221,26 +254,23 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   loginButton: {
-    backgroundColor: '#000080', // Màu xanh đậm cho nút Đăng nhập
+    backgroundColor: '#000080',
     height: 55,
     borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 40,
+    marginBottom: 30,
     shadowColor: '#000080',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 5,
-    elevation: 8, // Android shadow
-    width: '94%',
-
+    elevation: 8,
+    width: '95%',
   },
-
   loginButtonDisabled: {
-    opacity: 0.6,
+    backgroundColor: '#a0a0a0', // Màu xám khi loading
+    elevation: 0,
   },
-
-
   loginButtonText: {
     color: '#fff',
     fontSize: 18,
@@ -255,9 +285,9 @@ const styles = StyleSheet.create({
     marginBottom: 15,
   },
   guestButton: {
-    backgroundColor: '#f5f5f5', // Nền xám nhạt
+    backgroundColor: '#f5f5f5',
     height: 50,
-    width: '50%', // Chiều rộng tương đối
+    width: '50%',
     borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
@@ -275,8 +305,8 @@ const styles = StyleSheet.create({
   },
   socialIcon: {
     padding: 10,
-    borderRadius: 20, // Bo tròn icon
-    backgroundColor: '#f0f0f0', // Nền icon
+    borderRadius: 20,
+    backgroundColor: '#f0f0f0',
   },
 });
 
