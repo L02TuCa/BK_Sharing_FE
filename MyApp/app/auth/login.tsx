@@ -15,13 +15,14 @@ import { Feather, Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage'; // Import thư viện lưu trữ
 
+import { useAuth } from '../context/AuthContext'; // ✅ Import Hook
 // Import hàm gọi API
 import { loginUser } from '../services/authService'; 
 // import { useAuth } from '../context/AuthContext'; // Tạm thời ẩn nếu chưa config Context xong
 
 const LoginScreen = () => {
   const router = useRouter(); 
-  // const { login } = useAuth(); // Tạm ẩn để dùng trực tiếp API cho dễ test
+  const { login } = useAuth(); 
 
   const [account, setAccount] = useState(''); // Đây là email hoặc username
   const [password, setPassword] = useState('');
@@ -30,42 +31,28 @@ const LoginScreen = () => {
 
   // --- HÀM XỬ LÝ ĐĂNG NHẬP ---
   const handleLogin = async () => {
-    // 1. Validate đầu vào
     if (!account.trim() || !password.trim()) {
-      Alert.alert('Lỗi đăng nhập', 'Vui lòng nhập đầy đủ Tên tài khoản và Mật khẩu.');
+      Alert.alert('Lỗi đăng nhập', 'Vui lòng nhập đầy đủ thông tin.');
       return;
     }
 
     setIsLoading(true);
 
     try {
-      // 2. Gọi API Login thật
-      console.log("Đang đăng nhập với:", account);
+      // 1. Gọi API lấy dữ liệu
       const userData = await loginUser(account, password);
 
-      // 3. Đăng nhập thành công -> Lưu dữ liệu vào máy
-      // userData chứa: { userId, fullName, role, ... }
-      await AsyncStorage.setItem('userSession', JSON.stringify(userData));
-
-      Alert.alert(
-        "Thành công", 
-        `Chào mừng ${userData.fullName} quay trở lại!`,
-        [
-          {
-            text: "OK",
-            onPress: () => {
-              // 4. Chuyển hướng vào màn hình chính (Settings hoặc Home)
-              // Đổi đường dẫn này thành màn hình chính của bạn
-              router.replace('/home'); 
-            }
-          }
-        ]
-      );
+      // 2. Báo cho Context biết là đã login
+      // Hàm này sẽ tự lưu Storage và Context sẽ tự redirect sang Home
+      await login(userData); 
+      
+      Alert.alert("Thành công", `Chào mừng ${userData.fullName}!`);
+      // KHÔNG CẦN GỌI router.replace('/home') NỮA
+      // Context sẽ tự làm việc đó nhờ useEffect
 
     } catch (error: any) {
       console.error('Lỗi đăng nhập:', error);
-      // Hiển thị thông báo lỗi từ Server trả về (ví dụ: Sai mật khẩu)
-      Alert.alert('Đăng nhập thất bại', error.message || 'Kiểm tra lại tài khoản hoặc kết nối mạng.');
+      Alert.alert('Đăng nhập thất bại', error.message);
     } finally {
       setIsLoading(false);
     }
@@ -74,7 +61,7 @@ const LoginScreen = () => {
   const handleNoAccountPress = () => {
     // Chuyển sang màn hình đăng ký
     // Đảm bảo đường dẫn này đúng với file RegisterScreen của bạn
-    router.push('/signup'); 
+    router.push('/auth/signup'); 
   };
 
   const handleGuestLogin = () => {

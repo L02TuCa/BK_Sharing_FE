@@ -1,75 +1,35 @@
-import { Stack, Redirect } from "expo-router";
-// ✅ SỬA LỖI 2459: Import type Href từ module chính 'expo-router'
-import type { Href } from 'expo-router'; 
+import { Stack } from "expo-router";
 import { ThemeProvider } from './context/ThemeContext'; 
 import { AuthProvider, useAuth } from './context/AuthContext'; 
 import React from 'react';
+import { View, ActivityIndicator } from 'react-native';
 
-
-// --- Component BỌC Logic Điều hướng ---
+// Component con để kiểm tra loading
 function RootLayoutContent() {
-  // Lấy trạng thái từ AuthContext
-  const { isLoggedIn, isLoading, hasOnboarded } = useAuth();
+  const { isLoading } = useAuth();
 
+  // 1. Nếu đang tải (Load Storage), hiện màn hình chờ trắng hoặc xoay vòng
+  // Điều này ngăn chặn App hiển thị sai màn hình trước khi biết user là ai
   if (isLoading) {
-    // Hiển thị màn hình chờ trong khi tải trạng thái ban đầu (giả định)
-    return null; 
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' }}>
+        <ActivityIndicator size="large" color="#000080" />
+      </View>
+    );
   }
 
-  // --- LOGIC REDIRECT: Xử lý việc chuyển hướng ---
-  // Quyết định path để Redirect tới
-  let redirectPath: string;
-
-  if (!isLoggedIn) {
-      if (!hasOnboarded) {
-          // Chưa Onboarded -> Chuyển đến màn hình Onboarding
-          redirectPath = "/(auth)/onboarding"; 
-      } else {
-          // Chưa đăng nhập, đã Onboarded -> Chuyển đến màn hình Login
-          redirectPath = "/(auth)/login";
-      }
-  } else {
-      // Đã đăng nhập -> Chuyển đến trang chủ trong hệ thống Tabs
-      redirectPath = "/(tabs)/home";
-  }
-
-  // ✅ Ép kiểu cho đối tượng href để vượt qua lỗi TypeScript 2322 (Lỗi cũ)
-  // TypeScript không thể suy luận an toàn khi có route động như details/[id]
-  const redirectHref = { pathname: redirectPath } as Href;
-
-
-  // --- Cấu trúc Router chính ---
+  // 2. Khi tải xong, hiển thị Stack điều hướng
+  // AuthContext bên trong sẽ tự động điều hướng (replace) nếu cần
   return (
     <Stack screenOptions={{ headerShown: false }}>
-      
-      {/* 1. UN-AUTHENTICATED GROUP (Auth) */}
-      <Stack.Screen 
-        name="(auth)" 
-        options={{ 
-          headerShown: false,
-        }} 
-      />
-      
-      {/* 2. AUTHENTICATED GROUP (Tabs) */}
-      <Stack.Screen 
-        name="(tabs)" 
-        options={{ 
-          headerShown: false,
-        }} 
-      />
-      
-      {/* 3. Màn hình chi tiết nằm ở ngoài Tabs (Ví dụ: /details/123) */}
+      <Stack.Screen name="auth" options={{ headerShown: false }} />
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="details/[id]" />
-      
-      {/* 4. Thực hiện Redirect dựa trên logic trên */}
-      <Redirect href={redirectHref} />
-      
+      <Stack.Screen name="index" /> 
     </Stack>
   );
 }
 
-
-// --- Root Layout Chính (Không thay đổi) ---
 export default function RootLayout() {
   return (
     <AuthProvider>

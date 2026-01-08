@@ -3,152 +3,136 @@ import React, {
     useState, 
     useContext, 
     useEffect, 
-    useMemo,
     FC,
     ReactNode
 } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Stack } from 'expo-router'; // Dùng để ẩn Header của Auth Screens
+import { useRouter, useSegments } from 'expo-router';
 
-// --- 1. Định nghĩa Kiểu dữ liệu và Khóa lưu trữ ---
+// Định nghĩa kiểu dữ liệu User (tùy chỉnh theo API của bạn)
+interface UserData {
+    userId: number;
+    username: string;
+    fullName: string;
+    role: string;
+    profilePicture?: string;
+    // ... các trường khác
+}
+
 interface AuthContextType {
+    user: UserData | null;
     isLoggedIn: boolean;
-    hasOnboarded: boolean; //  Trạng thái đã xem Onboarding
-    login: (account: string, pass: string) => Promise<boolean>;
+    hasOnboarded: boolean;
+    isLoading: boolean;
+    login: (userData: UserData) => Promise<void>;
     logout: () => Promise<void>;
-    completeOnboarding: () => Promise<void>; // Hàm đánh dấu hoàn thành
-    isLoading: boolean; // Dùng để biết Context đã tải xong trạng thái chưa
+    completeOnboarding: () => Promise<void>;
     resetOnboarding: () => Promise<void>;
 }
 
-const AUTH_STORAGE_KEY = 'user-logged-in-status';
+const AUTH_STORAGE_KEY = 'userSession'; // Khớp với key bạn dùng bên Login cũ
 const ONBOARDING_STORAGE_KEY = 'user-has-onboarded';
 
-// LOGIC GIẢ LẬP XÁC THỰC API (THAY THẾ BẰNG API THẬT SAU NÀY)
-const mockApiLogin = async (account: string, pass: string): Promise<{ success: boolean; token?: string }> => {
-    // Giả lập độ trễ mạng 1 giây
-    await new Promise(resolve => setTimeout(resolve, 1000)); 
-    
-    // Ví dụ: Kiểm tra với một tài khoản cố định
-    const validAccount = 'thonqp@hcmut.edu.vn';
-    const validPassword = '123456'; 
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-    if ((account === validAccount || account === 'user') && pass === validPassword) {
-        // Đăng nhập thành công (Trong thực tế, token sẽ được trả về từ server)
-        return { success: true, token: 'mock-user-token-123' };
-    }
-    
-    // Đăng nhập thất bại
-    return { success: false };
-};
-
-// --- 2. Khởi tạo Context ---
-export const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-// --- 3. Custom Hook để sử dụng Auth Context ---
 export const useAuth = () => {
     const context = useContext(AuthContext);
-    if (context === undefined) {
-        throw new Error('useAuth must be used within an AuthProvider');
-    }
+    if (!context) throw new Error('useAuth must be used within an AuthProvider');
     return context;
 };
 
-// --- 4. Component Provider Chính ---
-interface AuthProviderProps {
-    children: ReactNode;
-}
-
-export const AuthProvider: FC<AuthProviderProps> = ({ children }) => {
-    // Trạng thái mặc định: chưa đăng nhập
-    const [isLoggedIn, setIsLoggedIn] = useState(false); 
-    // Trạng thái tải: ban đầu là true (đang tải trạng thái từ AsyncStorage)
-    const [isLoading, setIsLoading] = useState(true); 
+export const AuthProvider: FC<{ children: ReactNode }> = ({ children }) => {
+    const [user, setUser] = useState<UserData | null>(null);
     const [hasOnboarded, setHasOnboarded] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
+    
+    const router = useRouter();
+    const segments = useSegments(); // Lấy thông tin màn hình hiện tại
 
-    // useEffect: Tải trạng thái đăng nhập từ bộ nhớ cục bộ
+    // 1. Load dữ liệu khi mở App
     useEffect(() => {
-        const loadAuthStatus = async () => {
+        const loadState = async () => {
             try {
-                const storedStatus = await AsyncStorage.getItem(AUTH_STORAGE_KEY);
-                // Chuyển chuỗi ('true'/'false') thành boolean
-                if (storedStatus !== null) {
-                    setIsLoggedIn(storedStatus === 'true');
-                }
+                // Check Onboarding
+                const onboarded = await AsyncStorage.getItem(ONBOARDING_STORAGE_KEY);
+                setHasOnboarded(onboarded === 'true');
 
-                const onboardedStatus = await AsyncStorage.getItem(ONBOARDING_STORAGE_KEY);
-                if (onboardedStatus !== null) {
-                    setHasOnboarded(onboardedStatus === 'true');
+                // Check Login
+                const userJson = await AsyncStorage.getItem(AUTH_STORAGE_KEY);
+                if (userJson) {
+                    setUser(JSON.parse(userJson));
                 }
             } catch (e) {
-                console.error("Failed to load auth status", e);
+                console.error("Lỗi load Auth:", e);
             } finally {
-                setIsLoading(false); // Hoàn tất tải
+                setIsLoading(false);
             }
         };
-
-        loadAuthStatus();
+        loadState();
     }, []);
 
-    // Hàm Đăng nhập 
-    const login = async (account: string, pass: string): Promise<boolean> => {
-        // 1. Gọi logic xác thực (API)
-        const result = await mockApiLogin(account, pass);
+    // 2. LOGIC ĐIỀU HƯỚNG TỰ ĐỘNG (NAVIGATION GUARD)
+    useEffect(() => {
+        if (isLoading) return; // Chưa load xong thì chưa làm gì
 
-        if (result.success) {
-            // 2. Nếu thành công: Cập nhật trạng thái và lưu vào bộ nhớ cục bộ
-            // (Thực tế nên lưu token vào SecureStore/Keychain)
-            // await AsyncStorage.setItem('userToken', result.token!); // Lưu token nếu cần
-            
-            setIsLoggedIn(true);
-            await AsyncStorage.setItem(AUTH_STORAGE_KEY, 'true');
-            return true; // Đăng nhập thành công
+        const inAuthGroup = segments[0] === 'auth'; // Đang ở màn hình Login/Signup/Onboarding
+        const inTabsGroup = segments[0] === '(tabs)'; // Đang ở Home/Settings...
+
+        if (!hasOnboarded) {
+            // Chưa xem Onboarding -> Luôn đẩy về Onboarding
+            if (segments[1] !== 'onboarding') {
+                router.replace('/auth/onboarding');
+            }
+        } else if (!user) {
+            // Đã xem Onboarding nhưng Chưa đăng nhập
+            // 1. Nếu đang cố vào Home (inAuthGroup = false) -> Đá về Login
+            // 2. HOẶC Nếu đang bị kẹt ở trang Onboarding (dù đã xem xong) -> Đá về Login
+            if (!inAuthGroup || segments[1] === 'onboarding') {
+                router.replace('/auth/login');
+            }
+        } else if (user) {
+            // Đã đăng nhập
+            // Nếu người dùng đang ở trang Login/Onboarding -> Đẩy vào Home
+            if (inAuthGroup) {
+                router.replace('/(tabs)/home');
+            }
         }
+    }, [user, hasOnboarded, isLoading, segments]);
 
-        // 3. Nếu thất bại: Không làm gì cả và trả về false
-        return false; 
+    // 3. Các hành động
+    const login = async (userData: UserData) => {
+        setUser(userData); // Cập nhật State -> useEffect ở trên sẽ tự chuyển trang
+        await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(userData));
     };
 
-    // Hàm Đăng xuất
     const logout = async () => {
-        setIsLoggedIn(false);
-        // Xóa hoặc đặt lại trạng thái đăng nhập
-        await AsyncStorage.setItem(AUTH_STORAGE_KEY, 'false'); 
+        setUser(null); // Set null -> useEffect ở trên sẽ tự chuyển về Login
+        await AsyncStorage.removeItem(AUTH_STORAGE_KEY);
     };
 
-    //  Đánh dấu đã xem Onboarding
     const completeOnboarding = async () => {
         setHasOnboarded(true);
         await AsyncStorage.setItem(ONBOARDING_STORAGE_KEY, 'true');
+        // Sau khi set true, useEffect sẽ kiểm tra user -> nếu null -> tự chuyển về login
     };
 
     const resetOnboarding = async () => {
-        try {
-            await AsyncStorage.removeItem(ONBOARDING_STORAGE_KEY); // Xóa khóa
-            setHasOnboarded(false); // Cập nhật state
-            console.log("Onboarding reset thành công!");
-        } catch (e) {
-            console.error("Failed to reset onboarding", e);
-        }
+        setHasOnboarded(false);
+        setUser(null); // Reset luôn user để an toàn
+        await AsyncStorage.multiRemove([ONBOARDING_STORAGE_KEY, AUTH_STORAGE_KEY]);
     };
 
-    const value = useMemo(() => ({
-        isLoggedIn,
-        hasOnboarded,
-        login,
-        logout,
-        completeOnboarding,
-        resetOnboarding,
-        isLoading,
-    }), [isLoggedIn,hasOnboarded, isLoading]);
-
-    // Trong khi đang tải, có thể trả về null hoặc màn hình SplashScreen
-    if (isLoading) {
-        return null; // Có thể thay bằng <SplashScreen />
-    }
-
     return (
-        <AuthContext.Provider value={value}>
+        <AuthContext.Provider value={{
+            user,
+            isLoggedIn: !!user,
+            hasOnboarded,
+            isLoading,
+            login,
+            logout,
+            completeOnboarding,
+            resetOnboarding
+        }}>
             {children}
         </AuthContext.Provider>
     );
