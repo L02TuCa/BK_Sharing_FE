@@ -1,4 +1,4 @@
-import React, { FC, useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   StyleSheet,
   View,
@@ -9,29 +9,30 @@ import {
   Alert,
   TextInput,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import CustomSwitchBar, { SwitchTabName } from '../components/CustomSwitchBar';
 import FolderListItem from '../components/FolderListItem';
-import { useRouter } from 'expo-router';
 import { useAuth } from '../context/AuthContext';
+import { useFocusEffect } from 'expo-router';
 
-// --- 1. CẬP NHẬT INTERFACE THEO JSON MỚI ---
+// ✅ Import Legacy cho SDK 54+
+import * as FileSystem from 'expo-file-system/legacy';
+
+import * as Sharing from 'expo-sharing';
+import * as IntentLauncher from 'expo-intent-launcher';
+
+// --- INTERFACES ---
 interface BackendDocument {
-  documentId: number;       // Sửa từ document_id
+  documentId: number;
   title: string;
-  description: string;
-  fileType: string;         // Sửa từ file_type
-  filePath: string;         // Sửa từ file_path (đây là link file)
-  fileSize: number;         // Sửa từ file_size
-  uploadedById: number;
-  uploadedByUsername: string;
-  createdAt: string;        // Sửa từ created_at
-  versions: any;
-  versionCount: any;
+  fileType: string;
+  filePath: string;
+  fileSize: number;
+  createdAt: string;
 }
 
-// --- 2. DATA CHO UI (Giữ nguyên) ---
 interface ArchiveItem {
   id: string;
   title: string;
@@ -39,115 +40,244 @@ interface ArchiveItem {
   type: 'folder' | 'file';
   color: string;
   isShared: boolean;
-  fileUrl: string; // ✅ Thêm trường này để truyền sang màn hình chi tiết
+  fileUrl?: string;
+  localUri?: string;
+  fileName?: string;
 }
 
-// --- Helper Functions ---
+// --- HELPER FUNCTIONS ---
 const formatFileSize = (size: number) => {
-  if (!size) return '0 MB';
+  if (!size) return 'Unknown';
   if (size >= 1024 * 1024) return (size / (1024 * 1024)).toFixed(2) + ' MB';
   if (size >= 1024) return (size / 1024).toFixed(2) + ' KB';
   return size + ' Bytes';
 };
 
-const getFileColor = (fileType: string) => {
-  const type = fileType ? fileType.toLowerCase() : '';
-  if (type.includes('pdf')) return '#F44336'; 
-  if (type.includes('doc') || type.includes('word')) return '#2196F3'; 
-  if (type.includes('xls') || type.includes('excel')) return '#4CAF50'; 
-  if (type.includes('ppt')) return '#FF9800'; 
-  return '#000080'; 
+const getFileColor = (filenameOrType: string) => {
+  const type = filenameOrType ? filenameOrType.toLowerCase() : '';
+  if (type.includes('pdf')) return '#F44336';
+  if (type.includes('doc')) return '#2196F3';
+  if (type.includes('xls')) return '#4CAF50';
+  if (type.includes('ppt')) return '#FF9800';
+  if (type.includes('png') || type.includes('jpg')) return '#E91E63';
+  return '#000080';
+};
+
+// ✅ THÊM HÀM: Lấy MIME Type chuẩn cho Android
+const getMimeType = (url: string) => {
+  const ext = url.split('.').pop()?.toLowerCase();
+  switch (ext) {
+    case 'pdf': return 'application/pdf';
+    case 'doc':
+    case 'docx': return 'application/msword'; // Hoặc application/vnd.openxmlformats-officedocument.wordprocessingml.document
+    case 'xls':
+    case 'xlsx': return 'application/vnd.ms-excel';
+    case 'ppt':
+    case 'pptx': return 'application/vnd.ms-powerpoint';
+    case 'png': return 'image/png';
+    case 'jpg':
+    case 'jpeg': return 'image/jpeg';
+    case 'txt': return 'text/plain';
+    default: return '*/*'; // Mặc định nếu không nhận dạng được
+  }
 };
 
 export default function ArchiveScreen() {
-  const router = useRouter();
-  const { user } = useAuth(); // Lấy user từ context
-
+  const { user } = useAuth();
+  
   const [activeTab, setActiveTab] = useState<SwitchTabName>('Tài liệu của tôi');
   const [searchText, setSearchText] = useState('');
-  const [data, setData] = useState<ArchiveItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  
+  const [localFiles, setLocalFiles] = useState<ArchiveItem[]>([]);
+  const [apiFiles, setApiFiles] = useState<ArchiveItem[]>([]);
+  
+  const [isLoading, setIsLoading] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
 
-  useEffect(() => {
-    if (user) {
-        fetchDocuments();
-    }
-  }, [user]);
+  useFocusEffect(
+    useCallback(() => {
+      if (activeTab === 'Tài liệu của tôi') {
+        fetchLocalFiles();
+      } else {
+        fetchApiDocuments();
+      }
+    }, [activeTab, user])
+  );
 
-  const fetchDocuments = async () => {
-    // Giả sử user.id trong context chính là userId cần truyền
-    if (!user || !user.userId) return; 
-
+  // --- 1. XỬ LÝ FILE LOCAL (Tài liệu của tôi) ---
+  const fetchLocalFiles = async () => {
     try {
       setIsLoading(true);
       
-      // ✅ CẬP NHẬT ENDPOINT: /api/v1/documents/user/{userId}
-      const url = `https://bk-sharing-app.fly.dev/api/v1/documents/user/${user.userId}`;
-      console.log("Fetching URL:", url);
-
-      const response = await fetch(url);
-      const result = await response.json();
-
-      // ✅ CẬP NHẬT CÁCH LẤY DATA: Dữ liệu nằm trong result.data
-      if (result.success && Array.isArray(result.data)) {
-          const documents: BackendDocument[] = result.data;
-
-          // ✅ CẬP NHẬT MAPPING
-          const mappedData: ArchiveItem[] = documents.map((doc) => ({
-            id: doc.documentId.toString(),
-            title: doc.title || 'Không có tiêu đề',
-            // Format ngày: 2026-01-08T12:29... -> 08/01/2026
-            subtitle: `${formatFileSize(doc.fileSize)} • ${new Date(doc.createdAt).toLocaleDateString('vi-VN')}`,
-            type: 'file', 
-            color: getFileColor(doc.fileType),
-            isShared: false, 
-            fileUrl: doc.filePath // Lưu link file để dùng khi bấm vào
-          }));
-
-          setData(mappedData);
-      } else {
-          // Xử lý trường hợp không có data hoặc lỗi logic backend
-          console.warn("API trả về thành công nhưng không có data:", result);
-          setData([]);
+      const docDir = FileSystem.documentDirectory;
+      if (!docDir) {
+        console.warn('Thiết bị không hỗ trợ lưu trữ local (documentDirectory null)');
+        return;
       }
 
+      const files = await FileSystem.readDirectoryAsync(docDir);
+      
+      const items: ArchiveItem[] = [];
+      
+      for (const file of files) {
+        if (file.startsWith('.')) continue;
+
+        const fileUri = docDir + file;
+        const info = await FileSystem.getInfoAsync(fileUri);
+        
+        if (info.exists && !info.isDirectory) {
+          items.push({
+            id: file,
+            title: file,
+            subtitle: `${formatFileSize(info.size || 0)} • Đã tải về`,
+            type: 'file',
+            color: getFileColor(file),
+            isShared: false,
+            localUri: fileUri,
+            fileName: file
+          });
+        }
+      }
+      setLocalFiles(items);
     } catch (error) {
-      console.error('Lỗi fetch documents:', error);
-      Alert.alert('Lỗi', 'Không thể tải danh sách tài liệu');
+      console.error('Lỗi đọc file local:', error);
     } finally {
       setIsLoading(false);
     }
   };
 
+  // --- 2. XỬ LÝ FILE API (Tài liệu đã chia sẻ) ---
+  const fetchApiDocuments = async () => {
+    if (!user || !user.userId) return;
+    try {
+      setIsLoading(true);
+      const url = `https://bk-sharing-app.fly.dev/api/v1/documents/user/${user.userId}`;
+      const response = await fetch(url);
+      const result = await response.json();
+
+      if (result.success && Array.isArray(result.data)) {
+        const documents: BackendDocument[] = result.data;
+        const mappedData: ArchiveItem[] = documents.map((doc) => {
+          let fileName = doc.title;
+          if (!fileName.includes('.')) {
+             if (doc.fileType.includes('pdf')) fileName += '.pdf';
+             else if (doc.fileType.includes('image')) fileName += '.png';
+             else if (doc.fileType.includes('word')) fileName += '.docx';
+             else fileName += '.bin';
+          }
+
+          return {
+            id: doc.documentId.toString(),
+            title: doc.title || fileName,
+            subtitle: `${formatFileSize(doc.fileSize)} • ${new Date(doc.createdAt).toLocaleDateString('vi-VN')}`,
+            type: 'file',
+            color: getFileColor(doc.fileType),
+            isShared: true,
+            fileUrl: doc.filePath,
+            fileName: fileName 
+          };
+        });
+        setApiFiles(mappedData);
+      } else {
+        setApiFiles([]);
+      }
+    } catch (error) {
+      console.error('Lỗi fetch API:', error);
+      Alert.alert('Lỗi', 'Không thể tải danh sách online');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // --- 3. HÀM MỞ FILE VỚI OS DEFAULT ---
+  const openFileWithOS = async (fileUri: string) => {
+    try {
+      if (Platform.OS === 'android') {
+        // Lấy Content URI (bắt buộc cho Android 7+)
+        const cUri = await FileSystem.getContentUriAsync(fileUri);
+        
+        // ✅ QUAN TRỌNG: Lấy MIME Type để Android biết mở bằng app nào
+        const mimeType = getMimeType(fileUri);
+
+        await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
+          data: cUri,
+          flags: 1, // FLAG_GRANT_READ_URI_PERMISSION
+          type: mimeType, // ✅ Phải có dòng này thì mới mở được app đọc PDF/Word
+        });
+      } else {
+        // iOS tự động nhận diện tốt hơn
+        await Sharing.shareAsync(fileUri);
+      }
+    } catch (e) {
+      console.error("Không thể mở file:", e);
+      Alert.alert(
+        'Không thể mở file', 
+        'Thiết bị của bạn có thể chưa cài ứng dụng hỗ trợ định dạng này.'
+      );
+    }
+  };
+
+  // --- 4. XỬ LÝ KHI BẤM VÀO ITEM ---
+  const handleItemPress = async (item: ArchiveItem) => {
+    if (activeTab === 'Tài liệu của tôi' && item.localUri) {
+      await openFileWithOS(item.localUri);
+      return;
+    }
+
+    if (activeTab === 'Tài liệu đã chia sẻ' && item.fileUrl && item.fileName) {
+      const docDir = FileSystem.documentDirectory;
+      if (!docDir) {
+        Alert.alert('Lỗi', 'Không xác định được thư mục lưu trữ.');
+        return;
+      }
+
+      const localUri = docDir + item.fileName;
+      
+      try {
+        const fileInfo = await FileSystem.getInfoAsync(localUri);
+
+        if (fileInfo.exists) {
+          await openFileWithOS(localUri);
+        } else {
+          setIsDownloading(true);
+          
+          const downloadRes = await FileSystem.downloadAsync(
+            item.fileUrl,
+            localUri
+          );
+
+          setIsDownloading(false);
+          
+          if (downloadRes.status === 200) {
+            Alert.alert(
+              'Tải thành công', 
+              'File đã được lưu vào "Tài liệu của tôi". Bạn có muốn mở ngay không?', 
+              [
+                { text: 'Để sau', style: 'cancel' },
+                { text: 'Mở ngay', onPress: () => openFileWithOS(localUri) }
+              ]
+            );
+          } else {
+            Alert.alert('Lỗi', 'Tải file thất bại.');
+          }
+        }
+      } catch (error) {
+        setIsDownloading(false);
+        console.error(error);
+        Alert.alert('Lỗi', 'Có lỗi xảy ra khi xử lý file.');
+      }
+    }
+  };
+
   const handleTabChange = (tabName: SwitchTabName) => {
     setActiveTab(tabName);
+    setSearchText('');
   };
 
-  // ✅ CẬP NHẬT HÀM NHẤN VÀO ITEM
-  const handleItemPress = (item: ArchiveItem) => {
-    // Truyền thêm fileUrl sang màn hình chi tiết để hiển thị PDF
-    router.push({
-      pathname: "/details/[id]",
-      params: { 
-        id: item.id, 
-        title: item.title,
-        type: item.type,
-        url: item.fileUrl // Truyền link file (Supabase URL)
-      }
-    });
-  };
-
-  const handleMenuPress = (item: ArchiveItem) => {
-    Alert.alert('Tùy chọn', `Mở menu cho: ${item.title}`);
-  };
-
-  const filteredData = data
-    .filter(item => item.title.toLowerCase().includes(searchText.toLowerCase()))
-    .filter(item => {
-        if (activeTab === 'Tài liệu của tôi') return item.isShared === false;
-        if (activeTab === 'Tài liệu đã chia sẻ') return item.isShared === true;
-        return true; 
-    });
+  const currentData = activeTab === 'Tài liệu của tôi' ? localFiles : apiFiles;
+  const filteredData = currentData.filter(item => 
+    item.title.toLowerCase().includes(searchText.toLowerCase())
+  );
 
   return (
     <SafeAreaView style={styles.container}>
@@ -164,7 +294,7 @@ export default function ArchiveScreen() {
           <Feather name="search" size={20} color="#999" style={styles.searchIcon} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Tìm kiếm file..."
+            placeholder={activeTab === 'Tài liệu của tôi' ? "Tìm trong máy..." : "Tìm trên Cloud..."}
             placeholderTextColor="#999"
             value={searchText}
             onChangeText={setSearchText}
@@ -177,33 +307,41 @@ export default function ArchiveScreen() {
         </View>
       </View>
 
-      {isLoading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#000080" />
-          <Text style={{marginTop: 10, color: '#666'}}>Đang tải tài liệu...</Text>
+      {(isLoading || isDownloading) && (
+        <View style={styles.loadingOverlay}>
+             <ActivityIndicator size="large" color="#000080" />
+             <Text style={{marginTop: 10, color: '#000080', fontWeight: 'bold'}}>
+                {isDownloading ? "Đang tải file về máy..." : "Đang cập nhật danh sách..."}
+             </Text>
         </View>
-      ) : (
-        <FlatList
-          data={filteredData}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-              <FolderListItem 
-                  item={item} 
-                  onPress={handleItemPress} 
-                  onMenuPress={handleMenuPress} 
-              />
-          )}
-          contentContainerStyle={styles.listContent}
-          refreshing={isLoading}
-          onRefresh={fetchDocuments}
-          ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <Ionicons name="folder-open-outline" size={80} color="#ccc" />
-              <Text style={styles.emptyText}>Không tìm thấy tài liệu nào.</Text>
-            </View>
-          }
-        />
       )}
+
+      <FlatList
+        data={filteredData}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => (
+            <FolderListItem 
+                item={item} 
+                onPress={handleItemPress} 
+                onMenuPress={(i) => Alert.alert('Thông tin', i.title)} 
+            />
+        )}
+        contentContainerStyle={styles.listContent}
+        refreshing={isLoading}
+        onRefresh={activeTab === 'Tài liệu của tôi' ? fetchLocalFiles : fetchApiDocuments}
+        ListEmptyComponent={
+          !isLoading ? (
+            <View style={styles.emptyContainer}>
+              <Ionicons name={activeTab === 'Tài liệu của tôi' ? "phone-portrait-outline" : "cloud-offline-outline"} size={80} color="#ccc" />
+              <Text style={styles.emptyText}>
+                  {activeTab === 'Tài liệu của tôi' 
+                    ? 'Chưa có tài liệu nào trong máy.' 
+                    : 'Không tìm thấy tài liệu trên hệ thống.'}
+              </Text>
+            </View>
+          ) : null
+        }
+      />
     </SafeAreaView>
   );
 }
@@ -264,9 +402,16 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
     alignItems: 'center',
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
+  loadingOverlay: {
+    position: 'absolute',
+    top: 250,
+    left: 0,
+    right: 0,
+    zIndex: 10,
     alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.8)',
+    padding: 20,
+    borderRadius: 10,
   }
 });
