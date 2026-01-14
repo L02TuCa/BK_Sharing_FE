@@ -12,91 +12,37 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import NotificationItem from '../components/NotificationItem'; // Đảm bảo đúng đường dẫn
 
-// --- DỮ LIỆU GIẢ ĐỊNH ---
+// Import Context
+import { useNotification, NotificationItemType } from '../context/NotificationContext';
 
-interface Notification {
-    id: string;
-    iconName: keyof typeof Ionicons.glyphMap; 
-    iconColor: string;
-    title: string;
-    detail: string;
-    time: string;
-    isRead: boolean;
-}
-
-const NOTIFICATION_DATA: Notification[] = [
-  { 
-    id: 'n1', 
-    iconName: 'chatbox-ellipses-outline', 
-    iconColor: '#FF6347', 
-    title: 'Bình luận mới trên Giải tích', 
-    detail: 'Bạn Khoa đã trả lời bình luận của bạn: "Tôi nghĩ bạn nên xem lại định lý 3.2"', 
-    time: '30m ago', 
-    isRead: false 
-  },
-  { 
-    id: 'n2', 
-    iconName: 'cloud-download-outline', 
-    iconColor: '#000080', 
-    title: 'Tài liệu Mobile dev app đã được tải lên', 
-    detail: 'Giảng viên đã thêm một file mới: "Assignment 1 - React Native"', 
-    time: '2h ago', 
-    isRead: false 
-  },
-  { 
-    id: 'n3', 
-    iconName: 'people-outline', 
-    iconColor: '#3CB371', 
-    title: 'Thêm vào nhóm Cấu trúc dữ liệu', 
-    detail: 'Bạn đã được thêm vào nhóm "Ôn thi cuối kỳ"', 
-    time: '1 day ago', 
-    isRead: true 
-  },
-  { 
-    id: 'n4', 
-    iconName: 'alert-circle-outline', 
-    iconColor: '#FFD700', 
-    title: 'Bộ nhớ sắp đầy', 
-    detail: 'Bộ nhớ đám mây của bạn đã đạt 90% dung lượng. Vui lòng nâng cấp', 
-    time: '1 day ago', 
-    isRead: true 
-  },
-];
-
-// --- COMPONENT CHÍNH ---
 
 const NotificationScreen: FC = () => {
+  // Lấy danh sách thông báo và hàm đánh dấu đã đọc từ Context
+  const { notifications, markAsRead } = useNotification(); 
   
   const handleNotificationPress = (id: string) => {
-    // Logic xử lý khi nhấn vào thông báo (ví dụ: đánh dấu đã đọc và điều hướng)
-    Alert.alert('Mở Thông báo', `Thông báo ID: ${id}`);
-    // Thực hiện logic đánh dấu đã đọc tại đây (sử dụng state hoặc Redux/Context)
+    markAsRead(id); // Đánh dấu đã đọc khi bấm vào
+    // Logic điều hướng nếu cần (ví dụ mở chi tiết tài liệu)
   };
   
-  const renderItem = ({ item }: { item: Notification }) => (
+  const renderItem = ({ item }: { item: NotificationItemType }) => (
     <NotificationItem notification={item} onPress={handleNotificationPress} />
   );
   
   return (
     <SafeAreaView style={styles.safeArea}>
-
-      {/* Header Tùy chỉnh (Vì bạn đã ẩn headerShown trong _layout.tsx) */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Thông báo</Text>
-        {/* Nút Clear All nếu cần, tạm thời ẩn */}
-        {/* <TouchableOpacity>
-            <Text style={styles.clearText}>Xóa tất cả</Text>
-        </TouchableOpacity> */}
       </View>
 
-      {/* Danh sách thông báo */}
       <FlatList
-        data={NOTIFICATION_DATA}
+        data={notifications} // <--- Dùng dữ liệu thật
         renderItem={renderItem}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
         ListEmptyComponent={
             <View style={styles.emptyContainer}>
+                <Ionicons name="notifications-off-outline" size={50} color="#ccc" />
                 <Text style={styles.emptyText}>Không có thông báo nào.</Text>
             </View>
         }

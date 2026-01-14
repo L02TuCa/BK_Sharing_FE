@@ -25,6 +25,46 @@ interface UpdateInfoParams {
 }
 
 
+interface ChangePasswordParams {
+  userId: number | string;
+  newPassword: string;
+}
+
+
+export const changeUserPassword = async ({ userId, newPassword }: ChangePasswordParams) => {
+  try {
+    const url = ENDPOINTS.UPDATE_USER_INFO(userId); // API: /api/v1/users/{id}
+    
+    // Body chỉ chứa password mới
+    const bodyPayload = {
+        password: newPassword
+    };
+
+    const response = await fetch(url, {
+      method: 'PUT', // (Hoặc PATCH tùy backend, nhưng endpoint này thường là PUT)
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify(bodyPayload),
+    });
+
+    // Xử lý kết quả
+    // Lưu ý: Nếu server trả về null hoặc text không phải JSON thì cần handle cẩn thận
+    // Ở đây giả định trả về JSON như cũ
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.message || 'Đổi mật khẩu thất bại');
+    }
+
+    return result;
+  } catch (error) {
+    throw error;
+  }
+};
+
+
 // 3. Hàm gọi API
 export const registerUser = async (payload: RegisterPayload) => {
   try {

@@ -20,7 +20,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Import Services & Context
 import { useAuth } from '../context/AuthContext';
-import { updateBasicInfo, uploadUserAvatar } from '../services/authService';
+import { updateBasicInfo, uploadUserAvatar, changeUserPassword } from '../services/authService';
 
 // --- COMPONENT TÁI SỬ DỤNG: SettingOption (Giữ nguyên style cũ) ---
 interface SettingOptionProps {
@@ -83,6 +83,13 @@ export default function AccountSettingsScreen() {
     const [newEmail, setNewEmail] = useState('');
     const [newAvatarUri, setNewAvatarUri] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
+
+    // State cho Đổi mật khẩu
+    const [passModalVisible, setPassModalVisible] = useState(false);
+    const [newPass, setNewPass] = useState('');
+    const [confirmPass, setConfirmPass] = useState('');
+    const [passLoading, setPassLoading] = useState(false);
+
 
     // Điền thông tin vào Modal khi mở
     useEffect(() => {
@@ -172,7 +179,54 @@ export default function AccountSettingsScreen() {
 
     // --- UI handlers ---
     const handleProfilePress = () => setModalVisible(true);
-    const handleChangePasswordPress = () => Alert.alert("Đổi Mật khẩu", "Tính năng đang phát triển.");
+    
+    const handleChangePasswordPress = () => {
+        setNewPass('');
+        setConfirmPass('');
+        setPassModalVisible(true);
+    };
+
+
+
+    const handleSavePassword = async () => {
+        if (!user) return;
+
+        // Validation
+        if (!newPass || !confirmPass) {
+            Alert.alert("Lỗi", "Vui lòng nhập đầy đủ thông tin.");
+            return;
+        }
+        if (newPass !== confirmPass) {
+            Alert.alert("Lỗi", "Mật khẩu xác nhận không khớp.");
+            return;
+        }
+        if (newPass.length < 6) {
+             Alert.alert("Lỗi", "Mật khẩu phải có ít nhất 6 ký tự.");
+             return;
+        }
+
+        setPassLoading(true);
+        try {
+            // --- GỌI API MỚI ---
+            // Không cần truyền user hiện tại nữa, chỉ cần ID và Pass mới
+            await changeUserPassword({
+                userId: user.userId ?? user.id,
+                newPassword: newPass
+            });
+
+            Alert.alert("Thành công", "Đổi mật khẩu thành công! Vui lòng đăng nhập lại.");
+            setPassModalVisible(false);
+            
+            // Tùy chọn: Logout người dùng để họ đăng nhập lại với pass mới
+            // logout(); 
+        } catch (error: any) {
+            console.error(error);
+            Alert.alert("Thất bại", error.message || "Có lỗi xảy ra.");
+        } finally {
+            setPassLoading(false);
+        }
+    };
+
     const handleBiometricsPress = () => Alert.alert("Bảo mật", "Bật/Tắt Touch ID/Face ID.");
     const handleDeleteAccountPress = () => {
         Alert.alert(
@@ -310,6 +364,62 @@ export default function AccountSettingsScreen() {
                                 disabled={loading}
                             >
                                 {loading ? <ActivityIndicator color="#fff"/> : <Text style={styles.btnTextSave}>Lưu</Text>}
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
+
+
+
+            {/* --- MODAL CHANGE PASSWORD --- */}
+            <Modal
+                animationType="slide"
+                transparent={true}
+                visible={passModalVisible}
+                onRequestClose={() => setPassModalVisible(false)}
+            >
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContainer}>
+                        <Text style={styles.modalTitle}>Đổi Mật Khẩu</Text>
+
+                        <Text style={styles.inputLabel}>Mật khẩu mới</Text>
+                        <TextInput 
+                            style={styles.input}
+                            value={newPass}
+                            onChangeText={setNewPass}
+                            placeholder="Nhập mật khẩu mới"
+                            secureTextEntry={true} // Che ký tự
+                        />
+
+                        <Text style={styles.inputLabel}>Xác nhận mật khẩu</Text>
+                        <TextInput 
+                            style={styles.input}
+                            value={confirmPass}
+                            onChangeText={setConfirmPass}
+                            placeholder="Nhập lại mật khẩu mới"
+                            secureTextEntry={true} // Che ký tự
+                        />
+
+                        {/* Buttons */}
+                        <View style={styles.modalButtons}>
+                            <TouchableOpacity 
+                                style={[styles.modalBtn, styles.btnCancel]} 
+                                onPress={() => setPassModalVisible(false)}
+                            >
+                                <Text style={styles.btnTextCancel}>Hủy</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity 
+                                style={[styles.modalBtn, styles.btnSave]} 
+                                onPress={handleSavePassword}
+                                disabled={passLoading}
+                            >
+                                {passLoading ? (
+                                    <ActivityIndicator color="#fff"/>
+                                ) : (
+                                    <Text style={styles.btnTextSave}>Lưu</Text>
+                                )}
                             </TouchableOpacity>
                         </View>
                     </View>

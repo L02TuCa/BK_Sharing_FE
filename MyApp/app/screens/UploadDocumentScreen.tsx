@@ -8,10 +8,13 @@ import * as DocumentPicker from 'expo-document-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { uploadDocument } from '../services/documentService'; // Import hàm vừa viết
+import { useNotification } from '../context/NotificationContext';
 
 export default function UploadDocumentScreen() {
   const router = useRouter();
-  
+  const { addNotification } = useNotification();
+
+
   // State quản lý dữ liệu
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -69,6 +72,13 @@ export default function UploadDocumentScreen() {
         title: title,
         description: description,
         userId: userId
+      });
+
+      addNotification({
+        title: 'Tải tài liệu thành công',
+        detail: `Bạn đã tải lên tài liệu: "${title}"`,
+        iconName: 'cloud-done-outline',
+        iconColor: '#008000', // Màu xanh lá
       });
 
       Alert.alert("Thành công", "Tài liệu đã được tải lên!", [
