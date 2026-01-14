@@ -12,7 +12,7 @@ import {
   StatusBar // <-- 2. Import StatusBar nếu muốn lấy chiều cao chuẩn
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-// import { useRouter } from 'expo-router'; 
+import { useRouter } from 'expo-router'; 
 
 // 1. IMPORT AUTH CONTEXT
 import { useAuth } from '../context/AuthContext'; 
@@ -39,6 +39,7 @@ const RECENT_DATA: RecentData[] = [
 const HomeScreen: FC = () => {
     // 2. LẤY THÔNG TIN USER TỪ CONTEXT
     const { user } = useAuth();
+    const router = useRouter();
 
     const handleViewItem = (item: RecentData) => {
         Alert.alert('Xem ngay', `Bạn đã chọn tài liệu: ${item.title}`);
@@ -68,7 +69,7 @@ const HomeScreen: FC = () => {
                 </View>
                 
                 {/* Search Icon */}
-                <TouchableOpacity>
+                <TouchableOpacity onPress={() => router.push('/screens/SearchScreen')}>
                     <Feather name="search" size={24} color="#000" />
                 </TouchableOpacity>
             </View>

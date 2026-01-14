@@ -2,7 +2,7 @@
 
 // 1. Định nghĩa URL API của bạn
 import { ENDPOINTS } from './apiConfig';
-
+import { Platform } from 'react-native';
 // 2. Định nghĩa kiểu dữ liệu cho form đăng ký
 export interface RegisterPayload {
   username: string;
@@ -13,6 +13,17 @@ export interface RegisterPayload {
   profilePicture?: string; // Có thể để string rỗng hoặc URL mặc định
   isActive?: boolean;     // API của bạn yêu cầu true
 }
+
+interface UpdateInfoParams {
+  userId: number | string;
+  fullName: string;
+  email: string;
+  // Các trường bắt buộc phải gửi kèm để không bị null
+  username: string;
+  role: string;
+  isActive: boolean;
+}
+
 
 // 3. Hàm gọi API
 export const registerUser = async (payload: RegisterPayload) => {
@@ -73,6 +84,85 @@ export const loginUser = async (emailOrUsername: string, password: string) => {
 
   } catch (error: any) {
     console.error('Lỗi Login Service:', error);
+    throw error;
+  }
+};
+
+
+export const updateBasicInfo = async (params: UpdateInfoParams) => {
+  try {
+    const url = ENDPOINTS.UPDATE_USER_INFO(params.userId);
+    
+    // Body đúng chuẩn JSON yêu cầu
+    const bodyPayload = {
+        username: params.username,
+        email: params.email,
+        fullName: params.fullName,
+        role: params.role,
+        isActive: params.isActive
+    };
+
+    const response = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify(bodyPayload),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok || !result.success) {
+      throw new Error(result.message || 'Cập nhật thông tin thất bại');
+    }
+
+    return result.data; // Trả về object User đầy đủ
+  } catch (error) {
+    throw error;
+  }
+};
+
+
+
+
+export const uploadUserAvatar = async (userId: number | string, avatarUri: string) => {
+  try {
+    const url = ENDPOINTS.UPLOAD_AVATAR(userId);
+    const formData = new FormData();
+
+    // Xử lý file
+    const fileName = avatarUri.split('/').pop() || 'avatar.jpg';
+    const fileType = fileName.split('.').pop() === 'png' ? 'image/png' : 'image/jpeg';
+
+    const fileToUpload = {
+        uri: Platform.OS === 'android' ? avatarUri : avatarUri.replace('file://', ''),
+        name: fileName,
+        type: fileType,
+    };
+
+    // 'file' là key thường dùng, nếu API của bạn yêu cầu key khác (vd 'image', 'avatar') hãy sửa ở đây
+    // Dựa vào ngữ cảnh trước đó bạn dùng 'avatar' hoặc 'file'. 
+    // Nếu API Spring Boot thường là 'file'. Hãy thử 'file' trước.
+    formData.append('file', fileToUpload as any); 
+
+    const response = await fetch(url, {
+      method: 'POST', // Thường upload ảnh là POST
+      body: formData,
+      headers: {
+        'Accept': 'application/json',
+        // Không set Content-Type
+      },
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.message || 'Upload ảnh thất bại');
+    }
+
+    return result.imageUrl; // Trả về link ảnh string
+  } catch (error) {
     throw error;
   }
 };

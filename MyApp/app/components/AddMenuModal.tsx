@@ -44,7 +44,7 @@ const AddMenuModal: FC<AddMenuModalProps> = ({ isVisible, onClose, onSelectActio
     if (action === 'file') {
       // Chuyển hướng đến màn hình Upload
       // Đảm bảo đường dẫn này khớp với tên file bạn đã tạo ở bước trước
-      router.push('./screens/UploadDocumentScreen'); 
+      router.push('/screens/UploadDocumentScreen'); 
     } else {
       // Các hành động khác (Folder/Capture) trả về cho Parent xử lý (nếu cần)
       onSelectAction(action);

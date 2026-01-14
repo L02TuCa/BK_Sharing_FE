@@ -13,6 +13,25 @@ interface UploadParams {
   userId: number | string; // ID người dùng
 }
 
+// Định nghĩa kiểu dữ liệu cho Document trả về 
+export interface DocumentItem {
+  documentId: number;
+  title: string;
+  description: string;
+  fileType: string;
+  filePath: string;
+  fileSize: number;
+  uploadedByUsername: string;
+  createdAt: string;
+  averageRating: number | null;
+  totalRatings: number | null;
+  // ... các trường khác có thể null
+}
+
+
+
+
+
 export const uploadDocument = async ({ 
   fileUri, fileName, fileType, title, description, userId 
 }: UploadParams) => {
@@ -71,6 +90,37 @@ export const uploadDocument = async ({
   } catch (error: any) {
     console.error('Chi tiết lỗi Upload:', error);
     // Ném lỗi ra ngoài để UI hiển thị Alert
+    throw error;
+  }
+};
+
+
+
+export const searchDocuments = async (keyword: string = ''): Promise<DocumentItem[]> => {
+  try {
+    // Tạo URL với query parameter
+    // Nếu keyword rỗng, API sẽ trả về tất cả (theo mô tả của bạn)
+    const url = `${ENDPOINTS.SEARCH_DOCUMENTS}?keyword=${encodeURIComponent(keyword)}`;
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+        // Nếu API yêu cầu token xác thực, bạn cần thêm Authorization header ở đây
+      },
+    });
+
+    const result = await response.json();
+
+    console.log("Dữ liệu Search trả về:", JSON.stringify(result, null, 2));
+
+    if (!response.ok || !result.success) {
+      throw new Error(result.message || 'Lỗi khi tìm kiếm tài liệu');
+    }
+
+    return result.data; // Trả về mảng tài liệu
+  } catch (error) {
+    console.error('Search Error:', error);
     throw error;
   }
 };

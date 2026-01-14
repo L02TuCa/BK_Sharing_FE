@@ -9,14 +9,18 @@ import React, {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter, useSegments } from 'expo-router';
 
-// Định nghĩa kiểu dữ liệu User (tùy chỉnh theo API của bạn)
-interface UserData {
-    userId: number;
+// 1. CẬP NHẬT INTERFACE UserData (Quan trọng)
+// Phải khớp với dữ liệu bạn dùng trong AccountSettings
+export interface UserData {
+    userId: number;          // ID chính dùng trong app
     username: string;
     fullName: string;
     role: string;
     profilePicture?: string;
-    // ... các trường khác
+    email?: string;          // Thêm trường này
+    isActive?: boolean;      // Thêm trường này
+    id?: number;             // Thêm trường này (phòng trường hợp API trả về cả 'id')
+    token?: string;          // Token xác thực
 }
 
 interface AuthContextType {
@@ -28,9 +32,11 @@ interface AuthContextType {
     logout: () => Promise<void>;
     completeOnboarding: () => Promise<void>;
     resetOnboarding: () => Promise<void>;
+    // 2. THÊM HÀM setUser VÀO CONTEXT
+    setUser: (userData: UserData) => void;
 }
 
-const AUTH_STORAGE_KEY = 'userSession'; // Khớp với key bạn dùng bên Login cũ
+const AUTH_STORAGE_KEY = 'userSession'; 
 const ONBOARDING_STORAGE_KEY = 'user-has-onboarded';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -42,25 +48,23 @@ export const useAuth = () => {
 };
 
 export const AuthProvider: FC<{ children: ReactNode }> = ({ children }) => {
-    const [user, setUser] = useState<UserData | null>(null);
+    const [user, setUserState] = useState<UserData | null>(null); // Đổi tên state nội bộ để tránh trùng
     const [hasOnboarded, setHasOnboarded] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     
     const router = useRouter();
-    const segments = useSegments(); // Lấy thông tin màn hình hiện tại
+    const segments = useSegments();
 
     // 1. Load dữ liệu khi mở App
     useEffect(() => {
         const loadState = async () => {
             try {
-                // Check Onboarding
                 const onboarded = await AsyncStorage.getItem(ONBOARDING_STORAGE_KEY);
                 setHasOnboarded(onboarded === 'true');
 
-                // Check Login
                 const userJson = await AsyncStorage.getItem(AUTH_STORAGE_KEY);
                 if (userJson) {
-                    setUser(JSON.parse(userJson));
+                    setUserState(JSON.parse(userJson));
                 }
             } catch (e) {
                 console.error("Lỗi load Auth:", e);
@@ -71,28 +75,23 @@ export const AuthProvider: FC<{ children: ReactNode }> = ({ children }) => {
         loadState();
     }, []);
 
-    // 2. LOGIC ĐIỀU HƯỚNG TỰ ĐỘNG (NAVIGATION GUARD)
+    // 2. LOGIC ĐIỀU HƯỚNG TỰ ĐỘNG (Giữ nguyên logic của bạn - rất tốt)
     useEffect(() => {
-        if (isLoading) return; // Chưa load xong thì chưa làm gì
+        if (isLoading) return;
 
-        const inAuthGroup = segments[0] === 'auth'; // Đang ở màn hình Login/Signup/Onboarding
-        const inTabsGroup = segments[0] === '(tabs)'; // Đang ở Home/Settings...
-
+        const inAuthGroup = segments[0] === 'auth';
+        
         if (!hasOnboarded) {
-            // Chưa xem Onboarding -> Luôn đẩy về Onboarding
             if (segments[1] !== 'onboarding') {
                 router.replace('/auth/onboarding');
             }
         } else if (!user) {
-            // Đã xem Onboarding nhưng Chưa đăng nhập
-            // 1. Nếu đang cố vào Home (inAuthGroup = false) -> Đá về Login
-            // 2. HOẶC Nếu đang bị kẹt ở trang Onboarding (dù đã xem xong) -> Đá về Login
+            // Chưa login
             if (!inAuthGroup || segments[1] === 'onboarding') {
                 router.replace('/auth/login');
             }
         } else if (user) {
-            // Đã đăng nhập
-            // Nếu người dùng đang ở trang Login/Onboarding -> Đẩy vào Home
+            // Đã login
             if (inAuthGroup) {
                 router.replace('/(tabs)/home');
             }
@@ -100,25 +99,34 @@ export const AuthProvider: FC<{ children: ReactNode }> = ({ children }) => {
     }, [user, hasOnboarded, isLoading, segments]);
 
     // 3. Các hành động
+
     const login = async (userData: UserData) => {
-        setUser(userData); // Cập nhật State -> useEffect ở trên sẽ tự chuyển trang
+        setUserState(userData);
         await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(userData));
     };
 
     const logout = async () => {
-        setUser(null); // Set null -> useEffect ở trên sẽ tự chuyển về Login
+        setUserState(null);
         await AsyncStorage.removeItem(AUTH_STORAGE_KEY);
+    };
+
+    // 4. HÀM MỚI: setUser (Dùng để update profile mà ko cần login lại)
+    const setUser = (userData: UserData) => {
+        setUserState(userData);
+        // Lưu ngay lập tức để đồng bộ
+        AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(userData)).catch(err => 
+            console.error("Lỗi lưu user update:", err)
+        );
     };
 
     const completeOnboarding = async () => {
         setHasOnboarded(true);
         await AsyncStorage.setItem(ONBOARDING_STORAGE_KEY, 'true');
-        // Sau khi set true, useEffect sẽ kiểm tra user -> nếu null -> tự chuyển về login
     };
 
     const resetOnboarding = async () => {
         setHasOnboarded(false);
-        setUser(null); // Reset luôn user để an toàn
+        setUserState(null);
         await AsyncStorage.multiRemove([ONBOARDING_STORAGE_KEY, AUTH_STORAGE_KEY]);
     };
 
@@ -131,7 +139,8 @@ export const AuthProvider: FC<{ children: ReactNode }> = ({ children }) => {
             login,
             logout,
             completeOnboarding,
-            resetOnboarding
+            resetOnboarding,
+            setUser // Export hàm này ra ngoài
         }}>
             {children}
         </AuthContext.Provider>
