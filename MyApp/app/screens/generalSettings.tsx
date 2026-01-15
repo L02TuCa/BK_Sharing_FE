@@ -234,7 +234,7 @@ export default function GeneralSettingsScreen() {
 
 
 
-                {/* --- MỤC MỚI: TÀI LIỆU --- */}
+                {/* --- MỤC MỚI: TÀI LIỆU ---
                 <Text style={styles.sectionTitle}>Học tập</Text>
                 <SettingOption 
                     iconName="folder-open-outline" 
@@ -242,7 +242,7 @@ export default function GeneralSettingsScreen() {
                     iconColor="#007AFF" // Màu xanh dương
                     rightContent="chevron"
                     onPress={handleOpenDocuments} 
-                />
+                /> */}
 
             
             </ScrollView>

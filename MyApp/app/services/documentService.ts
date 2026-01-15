@@ -124,3 +124,53 @@ export const searchDocuments = async (keyword: string = ''): Promise<DocumentIte
     throw error;
   }
 };
+
+
+
+// 1. Kiểm tra tài liệu có tồn tại không
+export const getDocumentDetail = async (documentId: number | string) => {
+  try {
+    const response = await fetch(`${ENDPOINTS.DOCUMENTS}/${documentId}`, {
+      method: 'GET',
+    });
+    const result = await response.json();
+    
+    // Nếu success = true thì tài liệu còn tồn tại
+    if (response.ok && result.success) {
+      return result.data;
+    }
+    return null; // Không tìm thấy hoặc lỗi
+  } catch (error) {
+    console.error("Lỗi check document:", error);
+    return null;
+  }
+};
+
+// 2. Gửi đánh giá
+export const rateDocument = async (userId: number | string, documentId: number | string, rating: number, comment: string) => {
+    try {
+        // Endpoint: /api/v1/documents/{id}/ratings?userId={userId}
+        const url = `${ENDPOINTS.DOCUMENTS}/${documentId}/ratings?userId=${userId}`;
+        
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+            },
+            body: JSON.stringify({
+                rating,
+                comment
+            }),
+        });
+
+        const result = await response.json();
+        
+        if (!response.ok) {
+             throw new Error(result.message || 'Đánh giá thất bại');
+        }
+        return result;
+    } catch (error) {
+        throw error;
+    }
+};

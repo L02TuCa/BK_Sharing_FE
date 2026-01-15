@@ -8,7 +8,7 @@ import {
 import { useRouter } from 'expo-router';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { searchDocuments, DocumentItem } from '../services/documentService';
-
+import { useHistory } from '../context/HistoryContext';
 // --- THÊM IMPORT MỚI ---
 import * as FileSystem from 'expo-file-system/legacy';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -24,6 +24,8 @@ export default function SearchScreen() {
   
   // State để hiển thị loading khi đang tải file về
   const [downloadingId, setDownloadingId] = useState<number | null>(null);
+
+  const { addToHistory } = useHistory();
 
   // ... (Giữ nguyên các hàm fetchResults và useEffect cũ) ...
   const fetchResults = async (query: string) => {
@@ -83,6 +85,15 @@ export default function SearchScreen() {
         await AsyncStorage.setItem(ARCHIVE_STORAGE_KEY, JSON.stringify(savedDocs));
         // Alert.alert("Đã lưu", "Tài liệu đã được thêm vào mục 'Tài liệu của tôi'");
       }
+
+      addToHistory({
+        id: item.documentId.toString(),
+        title: item.title,
+        subtitle: item.fileType,
+        rating: item.averageRating || 0,
+        color: '#B3C3FF', // Hoặc hàm getFileColor(item.fileType)
+        fileUri: downloadRes.uri // Lưu đường dẫn file để mở lại
+     });
 
       // 4.Mở file bằng OS Default
       await openFileWithOS(downloadRes.uri);

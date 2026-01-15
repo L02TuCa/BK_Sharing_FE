@@ -13,37 +13,57 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router'; 
-
+import { useHistory, RecentItemType } from '../context/HistoryContext';
+import { openFileWithOS } from '../utils/fileHelper';
 // 1. IMPORT AUTH CONTEXT
 import { useAuth } from '../context/AuthContext'; 
 
 import RecentItem from '../components/RecentItem'; 
 import BkLogo from '../components/BkLogo';
 
-// --- DỮ LIỆU GIẢ ĐỊNH ---
-interface RecentData {
-  id: string;
-  title: string;
-  subtitle: string;
-  rating: number;
-  time: string;
-  color: string;
-}
+// // --- DỮ LIỆU GIẢ ĐỊNH ---
+// interface RecentData {
+//   id: string;
+//   title: string;
+//   subtitle: string;
+//   rating: number;
+//   time: string;
+//   color: string;
+// }
 
-const RECENT_DATA: RecentData[] = [
-  { id: '1', title: 'Giải tích', subtitle: 'Đại cương', rating: 4.5, time: '2 days ago', color: '#B3C3FF' },
-  { id: '2', title: 'Mobile dev app', subtitle: 'Chuyên ngành', rating: 4.0, time: '3 days ago', color: '#A0D2FF' },
-  { id: '3', title: 'Cơ sở dữ liệu', subtitle: 'Kỹ thuật', rating: 4.8, time: '1 day ago', color: '#C0FFEE' },
-];
+// const RECENT_DATA: RecentData[] = [
+//   { id: '1', title: 'Giải tích', subtitle: 'Đại cương', rating: 4.5, time: '2 days ago', color: '#B3C3FF' },
+//   { id: '2', title: 'Mobile dev app', subtitle: 'Chuyên ngành', rating: 4.0, time: '3 days ago', color: '#A0D2FF' },
+//   { id: '3', title: 'Cơ sở dữ liệu', subtitle: 'Kỹ thuật', rating: 4.8, time: '1 day ago', color: '#C0FFEE' },
+// ];
 
 const HomeScreen: FC = () => {
     // 2. LẤY THÔNG TIN USER TỪ CONTEXT
     const { user } = useAuth();
     const router = useRouter();
+    const { recentItems } = useHistory();
 
-    const handleViewItem = (item: RecentData) => {
-        Alert.alert('Xem ngay', `Bạn đã chọn tài liệu: ${item.title}`);
+    const handleViewItem = (item: RecentItemType) => {
+        if (item.fileUri) {
+             openFileWithOS(item.fileUri); // Mở file lại nếu có đường dẫn
+        } else {
+             Alert.alert('Thông báo', 'Không tìm thấy đường dẫn file.');
+        }
     };
+
+    // Hàm format thời gian hiển thị (VD: "2 hours ago")
+    const formatTime = (isoString: string) => {
+        const date = new Date(isoString);
+        const now = new Date();
+        const diffMs = now.getTime() - date.getTime();
+        const diffMins = Math.round(diffMs / 60000);
+        
+        if (diffMins < 60) return `${diffMins} phút trước`;
+        const diffHours = Math.round(diffMins / 60);
+        if (diffHours < 24) return `${diffHours} giờ trước`;
+        return `${Math.round(diffHours / 24)} ngày trước`;
+    };
+
 
     return (
         <SafeAreaView style={styles.container}>
@@ -93,20 +113,24 @@ const HomeScreen: FC = () => {
 
             {/* 4. Recents List */}
             <FlatList
-                data={RECENT_DATA}
+                data={recentItems} // <--- Dùng dữ liệu thật
                 renderItem={({ item }) => (
                     <RecentItem 
-                        item={item}
-                        onViewPress={handleViewItem}
-                        // Đảm bảo RecentItem nhận đúng prop này
-                        // Nếu RecentItem của bạn dùng props khác (ví dụ: name, date...), hãy sửa lại ở đây cho khớp
-                        // Ví dụ: name={item.title} date={item.time} ...
+                        item={{
+                            ...item,
+                            time: formatTime(item.time),// Format lại thời gian cho đẹp
+                            rating: item.rating || 0
+                        }}
+                        onViewPress={() => handleViewItem(item)}
                     />
                 )}
                 keyExtractor={item => item.id}
                 horizontal
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.recentsListContainer}
+                ListEmptyComponent={
+                    <Text style={{marginLeft: 20, color: '#999'}}>Chưa có tài liệu nào xem gần đây.</Text>
+                }
             />
 
         </SafeAreaView>

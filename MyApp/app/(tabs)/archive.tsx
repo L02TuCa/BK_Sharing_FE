@@ -10,13 +10,18 @@ import {
   TextInput,
   ActivityIndicator,
   Platform,
+  ActionSheetIOS,
 } from 'react-native';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import CustomSwitchBar, { SwitchTabName } from '../components/CustomSwitchBar';
 import FolderListItem from '../components/FolderListItem';
 import { useAuth } from '../context/AuthContext';
 import { useFocusEffect } from 'expo-router';
-
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getDocumentDetail, rateDocument } from '../services/documentService';
+import RatingModal from '../components/RatingModal';
+import { useNotification } from '../context/NotificationContext';
+import { useHistory } from '../context/HistoryContext';
 // ✅ Import Legacy cho SDK 54+ (Nếu dùng SDK mới nhất)
 import * as FileSystem from 'expo-file-system/legacy';
 
@@ -35,6 +40,7 @@ interface BackendDocument {
 
 interface ArchiveItem {
   id: string;
+  documentId?: number; // <--- TRƯỜNG MỚI ĐỂ LIÊN KẾT SERVER
   title: string;
   subtitle: string;
   type: 'folder' | 'file';
@@ -112,6 +118,15 @@ export default function ArchiveScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
 
+  // State cho Rating
+  const [ratingModalVisible, setRatingModalVisible] = useState(false);
+  const [selectedDocForRating, setSelectedDocForRating] = useState<ArchiveItem | null>(null);
+  const [isRatingLoading, setIsRatingLoading] = useState(false);
+
+  const { addNotification } = useNotification();
+
+  const { addToHistory } = useHistory();
+
   // Tự động load lại dữ liệu mỗi khi vào Tab
   useFocusEffect(
     useCallback(() => {
@@ -127,25 +142,30 @@ export default function ArchiveScreen() {
   const fetchLocalFiles = async () => {
     try {
       setIsLoading(true);
-      
       const docDir = FileSystem.documentDirectory;
-      if (!docDir) {
-        console.warn('Thiết bị không hỗ trợ lưu trữ local');
-        return;
-      }
+      if (!docDir) return;
 
-      // Đọc tất cả file trong thư mục Document
+      // A. Lấy danh sách file vật lý
       const files = await FileSystem.readDirectoryAsync(docDir);
-      
+
+      // B. Lấy metadata đã lưu (chứa documentId) từ AsyncStorage
+      // Key này phải khớp với lúc bạn lưu ở SearchScreen
+      const savedDocsJson = await AsyncStorage.getItem('my_saved_documents'); 
+      const savedDocsMetadata = savedDocsJson ? JSON.parse(savedDocsJson) : [];
+
       const items: ArchiveItem[] = [];
       
       for (const file of files) {
-        // Bỏ qua file hệ thống hoặc ẩn
         if (file.startsWith('.')) continue;
+        if (!isSupportedFile(file)) continue;
 
-        // --- QUAN TRỌNG: Lọc file không hỗ trợ ---
-        if (!isSupportedFile(file)) continue; 
-        // ----------------------------------------
+        // C. Tìm metadata khớp với file này để lấy documentId
+        // Logic khớp: localUri chứa tên file HOẶC title + id trùng khớp (tùy cách bạn lưu)
+        // Cách đơn giản nhất: check xem trong savedDocsMetadata có item nào mà fileName trùng không
+        const metadata = savedDocsMetadata.find((doc: any) => {
+             // doc.localUri dạng ".../abc.pdf", file dạng "abc.pdf"
+             return doc.localUri && doc.localUri.endsWith(file);
+        });
 
         const fileUri = docDir + file;
         const info = await FileSystem.getInfoAsync(fileUri);
@@ -153,7 +173,8 @@ export default function ArchiveScreen() {
         if (info.exists && !info.isDirectory) {
           items.push({
             id: file,
-            title: file,
+            documentId: metadata ? metadata.documentId : undefined, // <--- Gán ID nếu tìm thấy
+            title: metadata ? metadata.title : file, // Dùng tên gốc đẹp hơn nếu có
             subtitle: `${formatFileSize(info.size || 0)} • Đã tải về`,
             type: 'file',
             color: getFileColor(file),
@@ -169,6 +190,82 @@ export default function ArchiveScreen() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+
+
+  // --- 2. LOGIC KIỂM TRA SERVER VÀ MỞ RATING ---
+  const handleCheckAndRate = async (item: ArchiveItem) => {
+      // Chỉ cho phép rate nếu có documentId (nghĩa là file được tải từ app, không phải copy paste vào)
+      if (!item.documentId) {
+          Alert.alert("Thông báo", "Tài liệu này không có thông tin trên hệ thống để đánh giá.");
+          return;
+      }
+
+      setIsRatingLoading(true);
+      try {
+          // Gọi API kiểm tra tồn tại
+          const docData = await getDocumentDetail(item.documentId);
+          
+          if (docData) {
+              // Tồn tại -> Mở modal
+              setSelectedDocForRating(item);
+              setRatingModalVisible(true);
+          } else {
+              // Không tồn tại (null)
+              Alert.alert(
+                  "Rất tiếc", 
+                  "Tài liệu này đã bị xóa hoặc không còn tồn tại trên hệ thống máy chủ."
+              );
+          }
+      } catch (error) {
+          Alert.alert("Lỗi", "Không thể kết nối đến máy chủ.");
+      } finally {
+          setIsRatingLoading(false);
+      }
+  };
+
+  const submitRating = async (rating: number, comment: string) => {
+      if (!user || !selectedDocForRating?.documentId) return;
+      
+      setIsRatingLoading(true);
+      try {
+          await rateDocument(user.userId, selectedDocForRating.documentId, rating, comment);
+          addNotification({
+              title: 'Đánh giá thành công',
+              detail: `Bạn đã đánh giá ${rating} sao cho tài liệu "${selectedDocForRating.title}"`,
+              iconName: 'star', // Icon ngôi sao
+              iconColor: '#FFC107', // Màu vàng
+          });
+          Alert.alert("Thành công", "Cảm ơn bạn đã đánh giá tài liệu!");
+          setRatingModalVisible(false);
+      } catch (error: any) {
+          Alert.alert("Thất bại", error.message);
+      } finally {
+          setIsRatingLoading(false);
+      }
+  };
+
+
+  // --- 3. XỬ LÝ MENU KHI BẤM VÀO 3 CHẤM ---
+  const handleMenuPress = (item: ArchiveItem) => {
+    // Sử dụng Alert.alert để tạo menu đơn giản cho cả Android/iOS
+    Alert.alert(
+        item.title,
+        "Chọn hành động",
+        [
+            { text: "Hủy", style: "cancel" },
+            { 
+                text: "Đánh giá tài liệu", 
+                onPress: () => handleCheckAndRate(item) // Gọi hàm check
+            },
+            { 
+                text: "Xóa khỏi máy", 
+                style: 'destructive',
+                onPress: () => console.log("Logic xóa file ở đây") 
+            },
+        ]
+    );
   };
 
   // --- 2. XỬ LÝ FILE API (Tài liệu đã chia sẻ) ---
@@ -216,8 +313,22 @@ export default function ArchiveScreen() {
   };
 
   // --- 3. HÀM MỞ FILE VỚI OS DEFAULT ---
-  const openFileWithOS = async (fileUri: string) => {
+  const openFileWithOS = async (fileUri: string, item?: ArchiveItem) => {
     try {
+
+      if (item) {
+        addToHistory({
+            id: item.id, // Hoặc item.documentId?.toString() nếu có
+            title: item.title,
+            subtitle: item.subtitle || item.type, // Ví dụ: "PDF • 2MB"
+            rating: 0, // Mặc định chưa có rating
+            // time: new Date().toISOString(),
+            color: item.color,
+            fileUri: fileUri // Lưu đường dẫn để mở lại sau này
+        });
+      }
+
+
       if (Platform.OS === 'android') {
         const cUri = await FileSystem.getContentUriAsync(fileUri);
         const mimeType = getMimeType(fileUri);
@@ -239,7 +350,7 @@ export default function ArchiveScreen() {
   const handleItemPress = async (item: ArchiveItem) => {
     // TH1: File trong máy -> Mở luôn
     if (activeTab === 'Tài liệu của tôi' && item.localUri) {
-      await openFileWithOS(item.localUri);
+      await openFileWithOS(item.localUri, item);
       return;
     }
 
@@ -258,7 +369,7 @@ export default function ArchiveScreen() {
 
         if (fileInfo.exists) {
           // File đã có sẵn -> Mở luôn
-          await openFileWithOS(localUri);
+          await openFileWithOS(localUri, item);
         } else {
           // Chưa có -> Tải về
           setIsDownloading(true);
@@ -274,7 +385,7 @@ export default function ArchiveScreen() {
               'File đã được lưu vào "Tài liệu của tôi". Bạn có muốn mở ngay không?', 
               [
                 { text: 'Để sau', style: 'cancel' },
-                { text: 'Mở ngay', onPress: () => openFileWithOS(localUri) }
+                { text: 'Mở ngay', onPress: () => openFileWithOS(localUri, item) }
               ]
             );
             // Refresh lại list local nếu đang cần thiết (nhưng ở đây đang ở tab chia sẻ)
@@ -344,7 +455,7 @@ export default function ArchiveScreen() {
             <FolderListItem 
                 item={item} 
                 onPress={handleItemPress} 
-                onMenuPress={(i) => Alert.alert('Thông tin', i.title)} 
+                onMenuPress={() => handleMenuPress(item)}
             />
         )}
         contentContainerStyle={styles.listContent}
@@ -363,6 +474,17 @@ export default function ArchiveScreen() {
           ) : null
         }
       />
+
+      {/* MODAL RATING */}
+      <RatingModal 
+        visible={ratingModalVisible}
+        onClose={() => setRatingModalVisible(false)}
+        onSubmit={submitRating}
+        loading={isRatingLoading}
+        documentTitle={selectedDocForRating?.title}
+      />
+
+
     </SafeAreaView>
   );
 }
